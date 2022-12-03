@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity >=0.7.0 <0.9.0;
+pragma solidity ^0.8.13;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract USDC is ERC20("Dambam", "DAM"){
+contract USDC is ERC20("PayRight", "PRT"){
     address owner;
-
     constructor() {
         owner = msg.sender;
         _mint(address(this), 500000e18);

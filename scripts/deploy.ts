@@ -1,18 +1,28 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
 
-  const lockedAmount = ethers.utils.parseEther("1");
+//   USDC token contract is deployed to: 0x4486D59620E4dAf36C67E33a7Aac562fE69823ad
+// Payroll contract is deployed to: 0xdd975E073D4Fc393CC771C0AF10c64DBA5c6D715
 
-  const Lock = await ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+  ////////DEPLOYING THE TOKEN CONTRACT
+  const USDC = await ethers.getContractFactory("USDC");
+  const usdc = await USDC.deploy();
 
-  await lock.deployed();
+  await usdc.deployed();
 
-  console.log(`Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`);
+  console.log("USDC token contract is deployed to:", usdc.address);
+
+
+   ////////DEPLOYING THE PAYROLL CONTRACT
+   const companyManager = "0x637CcDeBB20f849C0AA1654DEe62B552a058EA87";
+   const PayRoll = await ethers.getContractFactory("Payroll");
+   const payroll = await PayRoll.deploy(companyManager ,usdc.address);
+ 
+   await payroll.deployed();
+ 
+   console.log("Payroll contract is deployed to:", payroll.address);
+
 }
 
 // We recommend this pattern to be able to use async/await everywhere

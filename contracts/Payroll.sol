@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.1;
 
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./USDCInterface.sol";
 
 contract Payroll {
@@ -10,15 +9,18 @@ contract Payroll {
 
     uint8 employeeCount = 1;
 
-    bytes32 rootHash;
-
     bool intialState;
 
     USDCInterface public usdcContractAddress;
 
     uint256 tokenBalance;
 
-    uint256 public constant numberofDays = 30 days; //pay days
+    uint256 public constant numberofDays = 25 days; //pay days
+
+    enum Status{
+        pending,
+        approved
+    }
 
     enum EmployeeLevel{
         Junior,
@@ -33,12 +35,16 @@ contract Payroll {
         EmployeeLevel level;
         uint timeFilled;
         bool registered;
+        Status status;
         bool approved;
+        bool pendingReview;
+        uint timeOfPendingReview;
+        uint256 timeOfApproval;
     }
 
     EmployeeInfo[] _employeeInfo;
     address[] EmployeeAddress;
-    address[]approvedEmployeeAddress;
+    address[] approvedEmployeeAddress;
     mapping(address => EmployeeInfo) info;
 
     struct SalaryInvoice{
@@ -53,6 +59,7 @@ contract Payroll {
         uint extraWorkFee;
         bool approved;
         bool set;
+     
     }
 
     mapping(address => SalaryInvoice) _salaryInvoice;
@@ -67,12 +74,10 @@ contract Payroll {
 
     ///////////ERROR MESSAGE///////////
     error NotVerified();
-    
+
     error  TimeNotReached();
 
     error ZeroAmount();
-
-    error NotWhitelisted();
 
     error InsufficientFunds();
 
@@ -86,10 +91,11 @@ contract Payroll {
 
     error NotApproved();
 
-    constructor(address _companyManager,USDCInterface _contractAddr, bytes32 _rootHash) {
+    error salaryAmountError();
+
+    constructor(address _companyManager,USDCInterface _contractAddr) {
         companyManager = _companyManager;
         usdcContractAddress = _contractAddr;
-        rootHash = _rootHash;
     }
 
      ///////////////FUNCTIONS///////////////
@@ -116,7 +122,7 @@ contract Payroll {
         EI.name = _name;
         EI.employeeAddress = _employeeAddress;
         EI.post = _post;
-        EI.level = _level; //0 || 1 || 2
+        EI.level = _level; //0  1  2
         EI.timeFilled = block.timestamp;
         EI.registered = true;
         EmployeeAddress.push(_employeeAddress);
@@ -125,58 +131,106 @@ contract Payroll {
         return "Registration successful, Reviewing....";
     }
 
-    function reviewEmployee(address _employeeAddress) external returns(address[] memory){
+    function showMyRegistrationStatus(address _employeeAddress) external view returns(string memory){
+        EmployeeInfo storage EI = info[_employeeAddress];
+        if(msg.sender != _employeeAddress || msg.sender != companyManager){
+            return("you don't have access to this, contact admin");
+        }
+        require(EI.registered == true, "You need to Register");
+        if(EI.pendingReview == true){
+            return ("Your registration is under review, check back in two days");
+        }else if(EI.approved == true){
+            return ("Congratulation, Your Registration is approved");
+        }else{
+            return ("Error with Registration, Contact Admin");
+        }
+    }
+
+
+    // review employee registration
+    function reviewInProgress(address _employeeAddress) external {
         if(msg.sender != companyManager){
             revert NotManager();
         }
+
+        EmployeeInfo storage EI = info[_employeeAddress];
+        //check
+        EI.pendingReview = true;
+        EI.timeOfPendingReview = block.timestamp;
+    }
+
+    // employee registration approval
+    function reviewApproved(address _employeeAddress) external returns(address[] memory){
+        if(msg.sender != companyManager){
+            revert NotManager();
+        }
+
         EmployeeInfo storage EI = info[_employeeAddress];
         //check
         EI.approved = true;
+        EI.pendingReview = false;
+        EI.timeOfApproval = block.timestamp;
         employeeCount = employeeCount + 1;
         approvedEmployeeAddress.push(_employeeAddress);
-
     }
 
-    function fillSalaryInvoice(string memory _name, string memory _post, EmployeeLevel _level, uint256 amount, string memory _description, uint256 rate, uint256 _extrafee) external returns(string memory) {
-        // if(numberofDays != 30 days){
-        //     revert TimeNotReached();
-        // }
 
+    /// this button/function is only displayed during the checkin time of the organisation
+    /// between 8 - 9am
+    // function checkIn(address _employeeAddress) external{
+    //     EmployeeInfo storage EI = info[_employeeAddress];
+    //     require(EI.timeIN + block)
+    //     uint timeIN = block.timestamp;
+    //     El.checkIn 
+    // }
+
+    // employee fill salary invoice after salary has b
+    function fillSalaryInvoice(string memory _name, string memory _post, EmployeeLevel _level, uint256 amount, string memory _description, uint256 rate) external returns(string memory) {
         EmployeeInfo memory EI = info[msg.sender];
+        require(EI.registered == true, "You are not a member of this organisation, kindly register");
         if( EI.approved == false ){
             revert NotVerified();
         }
+        uint timeStarted = EI.timeOfApproval ;
+        uint payDay = timeStarted + block.timestamp;
+
+         if(payDay < numberofDays){
+            revert TimeNotReached();
+        }
+
         SalaryInvoice storage invoice = _salaryInvoice[msg.sender];
-        require(invoice.set == true, "salary not set");
+        require(invoice.set == true, "salary not set, contact admin");
+        if(invoice.amountTobepaid < amount){
+            revert salaryAmountError();
+        }
         invoice.name = _name;
         invoice.employeeAddress = msg.sender;
         invoice.post = _post;
-        invoice.level = _level; //0 || 1 || 2
+        invoice.level = _level; //0  1  2
         invoice.description = _description;
-        if(invoice.amountTobepaid != amount){
-            revert("amount doesn't correlate");
-        }
-        invoice.time = block.timestamp;
-        if(invoice.ratePerDay != rate){
-            revert("rate doesn't correlate");
-        }
-        if(invoice.extraWorkFee != _extrafee){
-            revert("fee doesn't correlate");
-        }
 
         return "Salary Invoice filled Successfully";
 
     }
 
+    // review user salary invoice by the manager
     function reviewSalaryInvoice(address _employeeAddress) external {
          if (msg.sender != companyManager) {
             revert NotManager();
         } 
          SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
+         require(invoice.amountTobepaid != 0, "error, salary is yet to be set");
         //approves if all information entered by the employee is valid
+        invoice.approved = true;
 
     }
 
+    /// @dev A function set the employee salary by the admin
+    /// @param _employeeAddress: the address of the employee
+    /// @param amount: amount to be given to the employer as salary
+    /// @notice _rate will be used for the v2 of the app
+    /// @param _rate: the rate
+    /// @param extrafee: Tip for the month
     function setEmployeeSalary(address _employeeAddress, uint256 amount, uint256 _rate, uint256 extrafee) external {
          if (msg.sender != companyManager) {
             revert NotManager();
@@ -187,15 +241,20 @@ contract Payroll {
             revert NotApproved();
         }
         SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
-        invoice.amountTobepaid = amount;
+        if(extrafee != 0){
+            invoice.amountTobepaid = amount + extrafee;
+        }else{
+            invoice.amountTobepaid = amount;
+        }
+        
         invoice.time = block.timestamp;
         invoice.ratePerDay = _rate;
         invoice.extraWorkFee = extrafee;
         invoice.set = true;
     }
 
-
     ///@dev function changes the former companymanager, only callable by the previous manager
+    /// @param _companyManager: the new manager address
       function changeCompanyManager(address _companyManager) external{
         if (msg.sender != companyManager) {
             revert NotManager();
@@ -206,6 +265,22 @@ contract Payroll {
         emit ManagerUpdated(oldCompanyManager, companyManager, block.timestamp);
     }
 
+
+    function withdraw(address _employeeAddress) external {
+        EmployeeInfo memory EI = info[msg.sender];
+        require(EI.registered == true, "You are not a member of this organisation, kindly register");
+
+        require(USDCInterface(usdcContractAddress).balanceOf(address(this)) > 0, "Contract Not funded");
+        SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
+        require(invoice.approved == true, "Salary invoice yet to be approved, contact admin");
+        invoice.approved = false;
+        uint amount = invoice.amountTobepaid;
+        invoice.amountTobepaid = 0;
+        EI.timeOfApproval = 0;
+
+        USDCInterface(usdcContractAddress).transfer(_employeeAddress, amount);
+
+    }
 
     /// @notice function returns the level of an employee
     function getEmployeeStatus(address _employeeAddress) external view returns(EmployeeLevel){
@@ -220,13 +295,14 @@ contract Payroll {
     function getEmployeeCount() external view returns(uint){
         return employeeCount;
     }     
-    
 
-    function verified(bytes32[] memory proof) internal view returns (bool) {
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
-        return MerkleProof.verify(proof, rootHash, leaf);
+   /// @dev function to get an employee details
+    function getEmployeeDetails(address _employeeAddress) external view returns(EmployeeInfo memory EI){
+        return info[_employeeAddress];
     }
-
+    
+   /// @notice function to deposit USDC tokens
+   /// @param amount represent amount of tokens to be deposited
     function deposit(uint256 amount) external{
         if(amount <= 0){
             revert ZeroAmount();
@@ -238,23 +314,15 @@ contract Payroll {
         emit Deposit(msg.sender, amount);
     }
 
-    function withdraw(bytes32[] memory proof) external {
-        require(USDCInterface(usdcContractAddress).balanceOf(address(this)) > 0, "Contract Not funded");
-        bool prove = verified(proof);
-        if (prove) {
-            revert NotWhitelisted();
-        }
-    
-    }
-
-    function withdrawContractBal(address to) public payable {
+    //function to withdr
+    function withdrawContractBal(address to, uint amount) public payable {
          if (msg.sender != companyManager) {
             revert NotManager();
             }
-        if(address(this).balance < msg.value){
+        if(address(this).balance < amount){
             revert InsufficientFunds();
         } else{
-            uint256 amountTosend = address(this).balance - msg.value;
+            uint256 amountTosend = address(this).balance - amount;
             payable(to).transfer(amountTosend);
         }
     }

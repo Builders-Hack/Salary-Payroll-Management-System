@@ -5,7 +5,16 @@ require("dotenv").config();
 
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.1",
+  solidity: {
+    compilers: [
+      {
+        version: "0.8.4"
+      },
+      {
+        version: "0.8.13"
+      }
+    ]
+  },
   networks: {
     mumbai: {
       url: process.env.MUMBAI,
@@ -14,7 +23,9 @@ const config: HardhatUserConfig = {
     }
   },
   etherscan: {
-    apiKey: process.env.API_TOKEN
+    apiKey: {
+      polygonMumbai: "1PUJPJGSC1I7S7CPZVBQE8N5BB1A3ZK5RN"
+    }
   }
 };
 

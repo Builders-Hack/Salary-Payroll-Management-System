@@ -2,8 +2,8 @@ import { ethers } from "hardhat";
 
 async function main() {
 
-//   USDC token contract is deployed to: 0x4486D59620E4dAf36C67E33a7Aac562fE69823ad
-// Payroll contract is deployed to: 0xdd975E073D4Fc393CC771C0AF10c64DBA5c6D715
+// USDC token contract is deployed to: 0x8B5dB2E0F053dB73E518e3ae12A790faAf94B597
+// Payroll contract is deployed to: 0x00fb544D2Cd5f60d24BE3B74a10A4803Ce65e836
 
   ////////DEPLOYING THE TOKEN CONTRACT
   const USDC = await ethers.getContractFactory("USDC");

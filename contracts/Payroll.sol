@@ -5,9 +5,11 @@ import "./USDCInterface.sol";
 
 contract Payroll {
 
-    address companyManager;
+    address public companyManager;
 
-    uint8 employeeCount = 1;
+    uint8 public employeeCount;
+
+    uint256 public totalRegisteredEmploye;
 
     bool intialState;
 
@@ -21,6 +23,12 @@ contract Payroll {
         pending,
         approved
     }
+
+    // enum Role{
+    //     Teacher,
+    //     Engineer,
+    //     Developer
+    // }
 
     enum EmployeeLevel{
         Junior,
@@ -68,7 +76,7 @@ contract Payroll {
     /////////////EVENTS////////////////
     event Registered(address indexed caller, uint256 time);
     event Deposit(address indexed depositor, uint256 indexed amount);
-    event Withdrawal(address indexed employee, uint256 indexed amount, uint256 indexed nextwithdrawal);
+    event Withdrawal(address indexed employee, uint256 indexed amount);
     event ManagerUpdated( address indexed oldCompanyManager, address indexed companyManager, uint256 time);
 
 
@@ -111,6 +119,7 @@ contract Payroll {
     //     rootHash = _rootHash; 
     // }
 
+    /// @notice function for employee to register on the platform
     function registerInfo(string memory _name, address _employeeAddress, string memory _post, EmployeeLevel _level) external returns(string memory){
         if(_employeeAddress == address(0)){
             revert AddressZero();
@@ -125,12 +134,14 @@ contract Payroll {
         EI.level = _level; //0  1  2
         EI.timeFilled = block.timestamp;
         EI.registered = true;
+        totalRegisteredEmploye = totalRegisteredEmploye + 1;
         EmployeeAddress.push(_employeeAddress);
 
         emit Registered(_employeeAddress, block.timestamp);
         return "Registration successful, Reviewing....";
     }
 
+    /// @notice function for employee to see thier registration status
     function showMyRegistrationStatus(address _employeeAddress) external view returns(string memory){
         EmployeeInfo storage EI = info[_employeeAddress];
         if(msg.sender != _employeeAddress || msg.sender != companyManager){
@@ -164,7 +175,7 @@ contract Payroll {
         if(msg.sender != companyManager){
             revert NotManager();
         }
-
+        //check to see if the person is registered
         EmployeeInfo storage EI = info[_employeeAddress];
         //check
         EI.approved = true;
@@ -279,7 +290,7 @@ contract Payroll {
         EI.timeOfApproval = 0;
 
         USDCInterface(usdcContractAddress).transfer(_employeeAddress, amount);
-
+        emit Withdrawal(_employeeAddress, amount);
     }
 
     /// @notice function returns the level of an employee
@@ -300,6 +311,10 @@ contract Payroll {
     function getEmployeeDetails(address _employeeAddress) external view returns(EmployeeInfo memory EI){
         return info[_employeeAddress];
     }
+
+    function getTotalRegisteredEmployee() external view returns(uint256){
+
+    }
     
    /// @notice function to deposit USDC tokens
    /// @param amount represent amount of tokens to be deposited
@@ -314,7 +329,7 @@ contract Payroll {
         emit Deposit(msg.sender, amount);
     }
 
-    //function to withdr
+    //function to withdraw
     function withdrawContractBal(address to, uint amount) public payable {
          if (msg.sender != companyManager) {
             revert NotManager();

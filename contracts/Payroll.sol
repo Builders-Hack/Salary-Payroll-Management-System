@@ -7,9 +7,9 @@ contract Payroll {
 
     address public companyManager;
 
-    uint8 public employeeCount;
+    uint8 employeeCount;
 
-    uint256 public totalRegisteredEmploye;
+    uint256 public totalRegisteredEmployee;
 
     bool intialState;
 
@@ -110,13 +110,12 @@ contract Payroll {
 
 
     // /// @dev initialise function serves as the contract constructor
-    // function initialise(address _companyManager, bytes32 _rootHash) external{
+    // function initialise(address _companyManager) external{
     //     if(intialState == true){
     //         revert AlreadyInitialized();
     //     }
     //     companyManager = _companyManager;
     //     intialState = true;
-    //     rootHash = _rootHash; 
     // }
 
     /// @notice function for employee to register on the platform
@@ -134,7 +133,7 @@ contract Payroll {
         EI.level = _level; //0  1  2
         EI.timeFilled = block.timestamp;
         EI.registered = true;
-        totalRegisteredEmploye = totalRegisteredEmploye + 1;
+        totalRegisteredEmployee = totalRegisteredEmployee + 1;
         EmployeeAddress.push(_employeeAddress);
 
         emit Registered(_employeeAddress, block.timestamp);
@@ -144,16 +143,16 @@ contract Payroll {
     /// @notice function for employee to see thier registration status
     function showMyRegistrationStatus(address _employeeAddress) external view returns(string memory){
         EmployeeInfo storage EI = info[_employeeAddress];
-        if(msg.sender != _employeeAddress || msg.sender != companyManager){
-            return("you don't have access to this, contact admin");
-        }
+        // if(msg.sender != _employeeAddress || msg.sender != companyManager){
+        //     return("you don't have access to this, contact admin");
+        // }
         require(EI.registered == true, "You need to Register");
         if(EI.pendingReview == true){
             return ("Your registration is under review, check back in two days");
         }else if(EI.approved == true){
             return ("Congratulation, Your Registration is approved");
         }else{
-            return ("Error with Registration, Contact Admin");
+            return ("Your Review Pending....");
         }
     }
 
@@ -163,9 +162,16 @@ contract Payroll {
         if(msg.sender != companyManager){
             revert NotManager();
         }
-
+        //check if the person register
         EmployeeInfo storage EI = info[_employeeAddress];
-        //check
+        require(EI.registered == true, "User not Registered");
+        if(EI.pendingReview == true){
+            revert ("Already Reviewed");
+        }
+        if(EI.approved == true){
+            revert ("Already Approved");
+        }
+        
         EI.pendingReview = true;
         EI.timeOfPendingReview = block.timestamp;
     }
@@ -175,14 +181,20 @@ contract Payroll {
         if(msg.sender != companyManager){
             revert NotManager();
         }
-        //check to see if the person is registered
+        //check to see if the person is registererd
         EmployeeInfo storage EI = info[_employeeAddress];
         //check
+        require(EI.registered == true, "User not Registered");
+         if(EI.approved == true){
+            revert ("Already Reviewed");
+        }
+
         EI.approved = true;
         EI.pendingReview = false;
         EI.timeOfApproval = block.timestamp;
         employeeCount = employeeCount + 1;
         approvedEmployeeAddress.push(_employeeAddress);
+        return approvedEmployeeAddress;
     }
 
 
@@ -196,7 +208,7 @@ contract Payroll {
     // }
 
     // employee fill salary invoice after salary has b
-    function fillSalaryInvoice(string memory _name, string memory _post, EmployeeLevel _level, uint256 amount, string memory _description, uint256 rate) external returns(string memory) {
+    function fillSalaryInvoice(string memory _name, string memory _post, EmployeeLevel _level, uint256 amount, string memory _description) external returns(string memory) {
         EmployeeInfo memory EI = info[msg.sender];
         require(EI.registered == true, "You are not a member of this organisation, kindly register");
         if( EI.approved == false ){
@@ -229,20 +241,24 @@ contract Payroll {
          if (msg.sender != companyManager) {
             revert NotManager();
         } 
-         SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
-         require(invoice.amountTobepaid != 0, "error, salary is yet to be set");
+        EmployeeInfo memory EI = info[_employeeAddress];
+        require(EI.registered == true, "User not registered");
+        if( EI.approved == false ){
+            revert NotVerified();
+        }
+
+        SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
+        require(invoice.amountTobepaid != 0, "Salary is yet to be set");
         //approves if all information entered by the employee is valid
         invoice.approved = true;
-
     }
 
     /// @dev A function set the employee salary by the admin
     /// @param _employeeAddress: the address of the employee
     /// @param amount: amount to be given to the employer as salary
     /// @notice _rate will be used for the v2 of the app
-    /// @param _rate: the rate
     /// @param extrafee: Tip for the month
-    function setEmployeeSalary(address _employeeAddress, uint256 amount, uint256 _rate, uint256 extrafee) external {
+    function setEmployeeSalary(address _employeeAddress, uint256 amount, uint256 extrafee) external {
          if (msg.sender != companyManager) {
             revert NotManager();
         } 
@@ -259,7 +275,7 @@ contract Payroll {
         }
         
         invoice.time = block.timestamp;
-        invoice.ratePerDay = _rate;
+        //invoice.ratePerDay = _rate;
         invoice.extraWorkFee = extrafee;
         invoice.set = true;
     }
@@ -281,6 +297,10 @@ contract Payroll {
         EmployeeInfo memory EI = info[msg.sender];
         require(EI.registered == true, "You are not a member of this organisation, kindly register");
 
+        if( EI.approved == false ){
+            revert NotApproved();
+        }
+
         require(USDCInterface(usdcContractAddress).balanceOf(address(this)) > 0, "Contract Not funded");
         SalaryInvoice storage invoice = _salaryInvoice[_employeeAddress];
         require(invoice.approved == true, "Salary invoice yet to be approved, contact admin");
@@ -291,6 +311,20 @@ contract Payroll {
 
         USDCInterface(usdcContractAddress).transfer(_employeeAddress, amount);
         emit Withdrawal(_employeeAddress, amount);
+    }
+
+    /// @dev function to remove employee from the company
+    // function removeEmployee(address _employeeAddress) external {
+
+    // }
+
+     function updateTokenAddress(USDCInterface stablecoin) external{
+       
+        if (msg.sender != companyManager) {
+            revert NotManager();
+        }
+
+        usdcContractAddress = stablecoin;
     }
 
     /// @notice function returns the level of an employee
@@ -311,10 +345,6 @@ contract Payroll {
     function getEmployeeDetails(address _employeeAddress) external view returns(EmployeeInfo memory EI){
         return info[_employeeAddress];
     }
-
-    function getTotalRegisteredEmployee() external view returns(uint256){
-
-    }
     
    /// @notice function to deposit USDC tokens
    /// @param amount represent amount of tokens to be deposited
@@ -329,7 +359,11 @@ contract Payroll {
         emit Deposit(msg.sender, amount);
     }
 
-    //function to withdraw
+    function getContractTokenBalance() external{
+
+    }
+
+    //function for company manager to withdraw contract balance
     function withdrawContractBal(address to, uint amount) public payable {
          if (msg.sender != companyManager) {
             revert NotManager();
